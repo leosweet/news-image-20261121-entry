@@ -1,241 +1,271 @@
 #!/usr/bin/env python3
-"""Draw the 21 November 2026 world-news infographic (1024x1024 PNG).
+"""Render the 21 November 2026 world-news infographic (1024x1024 PNG).
 
-Stories (all reported on Saturday 21 November 2026):
- 1. Russia's massive overnight strike on Ukraine; missiles land in Poland
- 2. Global markets plunge into correction on an AI sell-off
- 3. Magnitude 6.8 earthquake off Timor-Leste
- 4. 128 nations agree to draft rules on autonomous weapons in Geneva
- 5. Mexico captures FBI most-wanted cartel boss "El Chapo Isidro"
- 6. BepiColombo enters orbit around Mercury after 8 years
+v2: full-day edition. Every story below was checked against live news
+reporting for Saturday 21 November 2026 (UTC):
+
+ 1. Russia's largest strike package of the war on Ukraine (overnight
+    19-20 Nov, reported 20-21 Nov): 400+ drones, 110+ missiles incl.
+    27 ballistic; at least 8 killed, Kyiv's Dnipro bridges hit, power
+    cut nationwide. Two missiles and a drone landed in Poland; PM Tusk
+    called it a deliberate provocation. On 21 Nov a double-tap strike
+    on Kryvyi Rih killed 2 and wounded 60 (officials).
+ 2. AI sell-off: S&P 500 -3.7% into correction, Nasdaq -5.3% (negative
+    for 2026), Nikkei -5.1%; Nvidia -14% amid a leadership crisis.
+ 3. Magnitude 6.8 quake in the Banda Sea, 09:42 UTC, 226 km NE of Dili;
+    felt in Dili and Darwin; no damage reported (GFZ/USGS).
+ 4. Geneva: 128 CCW states agree to elaborate rules on lethal
+    autonomous weapons over two years -- but no binding commitment;
+    campaigners call the mandate watered down.
+ 5. Mexico captures FBI Ten Most Wanted boss "El Chapo Isidro"
+    (Fausto Isidro Meza Flores) in a Sinaloa raid with US intelligence
+    help; $5m FBI reward; 11 killed in the fighting.
+ 6. BepiColombo enters orbit around Mercury (18:24 UTC) after an
+    8-year, 10-billion-km journey; science begins April 2027.
 """
+import math
 import os
+
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 1024, 1024
-BG = (13, 27, 42)          # deep navy
-PANEL = (24, 43, 66)       # panel navy
-PANEL2 = (30, 52, 78)      # lighter panel
-WHITE = (245, 247, 250)
-GOLD = (242, 183, 5)
-MUTED = (168, 184, 200)
-RED = (214, 48, 49)
-GREEN = (46, 160, 90)
-ORANGE = (232, 126, 36)
-STEEL = (84, 153, 199)
-PURPLE = (155, 89, 182)
-TEAL = (26, 188, 156)
+CANVAS_W, CANVAS_H = 1024, 1024
+INK = (10, 22, 38)            # page background
+CARD = (22, 40, 62)           # card background
+CARD_HI = (29, 51, 78)        # featured card background
+PAPER = (244, 246, 249)       # near-white text
+GOLD = (240, 180, 8)          # masthead accent
+SOFT = (164, 181, 198)        # secondary text
+RULE = (62, 78, 98)           # hairline
+RED = (219, 57, 57)
+AMBER = (233, 128, 34)
+SKY = (88, 158, 216)
+VIOLET = (152, 94, 190)
+LEAF = (52, 168, 96)
 
-FONT_DIR = "/usr/share/fonts/truetype/dejavu"
-
-
-def font(name, size):
-    return ImageFont.truetype(os.path.join(FONT_DIR, name), size)
+DEJAVU = "/usr/share/fonts/truetype/dejavu"
 
 
-F_DATE = font("DejaVuSans-Bold.ttf", 58)
-F_SUB = font("DejaVuSans-Bold.ttf", 26)
-F_LEAD = font("DejaVuSans-Bold.ttf", 36)
-F_HEAD = font("DejaVuSans-Bold.ttf", 26)
-F_BODY = font("DejaVuSans.ttf", 20)
-F_KICK = font("DejaVuSans-Bold.ttf", 18)
-F_FOOT = font("DejaVuSans.ttf", 16)
+def load(name, size):
+    return ImageFont.truetype(os.path.join(DEJAVU, name), size)
 
 
-def wrap(draw, text, fnt, max_w):
-    """Wrap text to fit max_w; returns list of lines."""
+F_DATE = load("DejaVuSans-Bold.ttf", 54)
+F_TAG = load("DejaVuSans-Bold.ttf", 24)
+F_LEAD = load("DejaVuSans-Bold.ttf", 35)
+F_HEAD = load("DejaVuSans-Bold.ttf", 23)
+F_BODY = load("DejaVuSans.ttf", 19)
+F_KICK = load("DejaVuSans-Bold.ttf", 17)
+F_FOOT = load("DejaVuSans.ttf", 15)
+
+
+def fit_lines(draw, text, font, max_width, limit):
+    """Greedy word wrap; returns at most `limit` lines."""
     words = text.split()
-    lines, cur = [], ""
-    for w in words:
-        trial = (cur + " " + w).strip()
-        if draw.textlength(trial, font=fnt) <= max_w:
-            cur = trial
+    lines, current = [], ""
+    for word in words:
+        trial = (current + " " + word).strip()
+        if draw.textlength(trial, font=font) <= max_width:
+            current = trial
         else:
-            if cur:
-                lines.append(cur)
-            cur = w
-    if cur:
-        lines.append(cur)
-    return lines
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines[:limit]
 
 
-def draw_burst(d, cx, cy, r, color):
-    """Starburst / explosion pictogram."""
-    import math
+# ---------------------------------------------------------------- icons
+
+def icon_burst(draw, x, y, s, color):
+    """Explosion: 16-point star with a bright core."""
+    cx, cy = x + s / 2, y + s / 2
     pts = []
-    for i in range(24):
-        ang = math.pi * 2 * i / 24
-        rr = r if i % 2 == 0 else r * 0.45
-        pts.append((cx + rr * math.cos(ang), cy + rr * math.sin(ang)))
-    d.polygon(pts, fill=color)
-    d.ellipse([cx - r * 0.28, cy - r * 0.28, cx + r * 0.28, cy + r * 0.28],
-              fill=(255, 214, 64))
+    for i in range(32):
+        ang = math.pi * 2 * i / 32 - math.pi / 2
+        r = s * 0.48 if i % 2 == 0 else s * 0.22
+        pts.append((cx + r * math.cos(ang), cy + r * math.sin(ang)))
+    draw.polygon(pts, fill=color)
+    draw.ellipse([cx - s * 0.13, cy - s * 0.13, cx + s * 0.13, cy + s * 0.13],
+                 fill=(255, 216, 70))
 
 
-def draw_chart(d, x, y, w, h, color):
-    """Falling line-chart pictogram with axes."""
-    d.line([(x, y + h), (x + w, y + h)], fill=(200, 210, 220), width=3)
-    d.line([(x, y), (x, y + h)], fill=(200, 210, 220), width=3)
-    pts = [(x + 6, y + 14), (x + w * 0.3, y + 26), (x + w * 0.5, y + 20),
-           (x + w * 0.7, y + 52), (x + w - 6, y + h - 8)]
-    d.line(pts, fill=color, width=5, joint="curve")
+def icon_chart(draw, x, y, s, color):
+    """Falling market chart with axes."""
+    draw.line([(x + 4, y + s - 4), (x + s - 2, y + s - 4)],
+              fill=(205, 214, 224), width=3)
+    draw.line([(x + 4, y + 2), (x + 4, y + s - 4)],
+              fill=(205, 214, 224), width=3)
+    pts = [(x + 10, y + s * 0.18), (x + s * 0.34, y + s * 0.34),
+           (x + s * 0.55, y + s * 0.26), (x + s * 0.76, y + s * 0.62),
+           (x + s - 8, y + s * 0.86)]
+    draw.line(pts, fill=color, width=5, joint="curve")
     for px, py in pts:
-        d.ellipse([px - 4, py - 4, px + 4, py + 4], fill=color)
+        draw.ellipse([px - 4, py - 4, px + 4, py + 4], fill=color)
 
 
-def draw_quake(d, x, y, w, h, color):
-    """Seismic zigzag pictogram."""
-    mid = y + h // 2
-    pts = [(x, mid), (x + w * 0.18, mid), (x + w * 0.3, mid - h * 0.32),
-           (x + w * 0.42, mid + h * 0.3), (x + w * 0.55, mid - h * 0.42),
-           (x + w * 0.68, mid + h * 0.28), (x + w * 0.8, mid),
-           (x + w, mid)]
-    d.line(pts, fill=color, width=5, joint="curve")
-    d.ellipse([x + w * 0.55 - 6, mid - h * 0.42 - 6,
-               x + w * 0.55 + 6, mid - h * 0.42 + 6], fill=color)
+def icon_quake(draw, x, y, s, color):
+    """Seismograph zigzag with a peak marker."""
+    mid = y + s / 2
+    pts = [(x + 2, mid), (x + s * 0.2, mid),
+           (x + s * 0.32, mid - s * 0.3), (x + s * 0.44, mid + s * 0.28),
+           (x + s * 0.56, mid - s * 0.38), (x + s * 0.68, mid + s * 0.26),
+           (x + s * 0.8, mid), (x + s - 2, mid)]
+    draw.line(pts, fill=color, width=5, joint="curve")
+    draw.ellipse([x + s * 0.56 - 6, mid - s * 0.38 - 6,
+                  x + s * 0.56 + 6, mid - s * 0.38 + 6], fill=(255, 216, 70))
 
 
-def draw_robot(d, x, y, w, h, color):
-    """Simple robot-head pictogram."""
-    d.rounded_rectangle([x + w * 0.14, y + h * 0.22, x + w * 0.86, y + h * 0.9],
-                        radius=12, fill=color)
-    d.line([(x + w * 0.5, y + h * 0.22), (x + w * 0.5, y + 2)],
-           fill=color, width=4)
-    d.ellipse([x + w * 0.44, y - 2, x + w * 0.56, y + 10], fill=GOLD)
-    d.ellipse([x + w * 0.3, y + h * 0.42, x + w * 0.44, y + h * 0.56],
-              fill=BG)
-    d.ellipse([x + w * 0.56, y + h * 0.42, x + w * 0.7, y + h * 0.56],
-              fill=BG)
-    d.line([(x + w * 0.32, y + h * 0.74), (x + w * 0.68, y + h * 0.74)],
-           fill=BG, width=4)
+def icon_robot(draw, x, y, s, color):
+    """Robot head: antenna, square eyes, grille mouth."""
+    draw.line([(x + s * 0.5, y + s * 0.2), (x + s * 0.5, y + 2)],
+              fill=color, width=4)
+    draw.ellipse([x + s * 0.43, y - 2, x + s * 0.57, y + 12], fill=GOLD)
+    draw.rounded_rectangle([x + s * 0.12, y + s * 0.2,
+                            x + s * 0.88, y + s * 0.92],
+                           radius=10, fill=color)
+    draw.rectangle([x + s * 0.28, y + s * 0.42, x + s * 0.42, y + s * 0.56],
+                   fill=INK)
+    draw.rectangle([x + s * 0.58, y + s * 0.42, x + s * 0.72, y + s * 0.56],
+                   fill=INK)
+    for i in range(3):
+        xx = x + s * (0.34 + 0.11 * i)
+        draw.line([(xx, y + s * 0.74), (xx, y + s * 0.82)],
+                  fill=INK, width=4)
 
 
-def draw_badge(d, x, y, w, h, color):
-    """Shield/badge pictogram with a star."""
-    import math
-    d.polygon([(x + w * 0.5, y), (x + w * 0.95, y + h * 0.18),
-               (x + w * 0.95, y + h * 0.55), (x + w * 0.5, y + h),
-               (x + w * 0.05, y + h * 0.55), (x + w * 0.05, y + h * 0.18)],
-              fill=color)
-    cx, cy, r = x + w * 0.5, y + h * 0.44, w * 0.26
+def icon_shield(draw, x, y, s, color):
+    """Shield with a five-point star."""
+    draw.polygon([(x + s * 0.5, y + 2), (x + s * 0.96, y + s * 0.2),
+                  (x + s * 0.96, y + s * 0.56), (x + s * 0.5, y + s - 2),
+                  (x + s * 0.04, y + s * 0.56), (x + s * 0.04, y + s * 0.2)],
+                 fill=color)
+    cx, cy, r = x + s * 0.5, y + s * 0.44, s * 0.24
     pts = []
     for i in range(10):
         ang = -math.pi / 2 + math.pi * i / 5
         rr = r if i % 2 == 0 else r * 0.45
         pts.append((cx + rr * math.cos(ang), cy + rr * math.sin(ang)))
-    d.polygon(pts, fill=WHITE)
+    draw.polygon(pts, fill=PAPER)
 
 
-def draw_planet(d, x, y, w, h, color):
-    """Planet with ring pictogram."""
-    d.ellipse([x + w * 0.18, y + h * 0.14, x + w * 0.82, y + h * 0.86],
-              fill=color)
-    d.ellipse([x + w * 0.3, y + h * 0.28, x + w * 0.52, y + h * 0.5],
-              fill=(color[0] + 40, color[1] + 30, color[2] + 40))
-    d.line([(x, y + h * 0.62), (x + w, y + h * 0.38)], fill=GOLD, width=6)
+def icon_planet(draw, x, y, s, color):
+    """Ringed planet with two craters."""
+    draw.ellipse([x + s * 0.16, y + s * 0.12, x + s * 0.84, y + s * 0.88],
+                 fill=color)
+    draw.ellipse([x + s * 0.3, y + s * 0.26, x + s * 0.48, y + s * 0.44],
+                 fill=(color[0] + 42, color[1] + 32, color[2] + 42))
+    draw.ellipse([x + s * 0.56, y + s * 0.5, x + s * 0.68, y + s * 0.62],
+                 fill=(color[0] + 42, color[1] + 32, color[2] + 42))
+    draw.line([(x + 2, y + s * 0.64), (x + s - 2, y + s * 0.36)],
+              fill=GOLD, width=6)
 
 
-def story_cell(d, x, y, w, h, kicker, kick_color, headline, body, pict):
-    d.rounded_rectangle([x, y, x + w, y + h], radius=10, fill=PANEL)
-    d.rounded_rectangle([x, y, x + w, y + 6], radius=3, fill=kick_color)
-    px, py, pw, ph = x + w - 108, y + 34, 92, 92
-    pict(d, px, py, pw, ph, kick_color)
+# ---------------------------------------------------------------- layout
+
+def card(draw, x, y, w, h, kicker, accent, headline, body, icon):
+    draw.rounded_rectangle([x, y, x + w, y + h], radius=10, fill=CARD)
+    draw.rounded_rectangle([x, y, x + w, y + 6], radius=3, fill=accent)
+    icon(draw, x + w - 100, y + 30, 84, accent)
     tx = x + 16
-    tw = w - 16 - 116
-    d.text((tx, y + 16), kicker, font=F_KICK, fill=kick_color)
-    lines = wrap(d, headline, F_HEAD, tw)[:2]
-    ly = y + 44
-    for ln in lines:
-        d.text((tx, ly), ln, font=F_HEAD, fill=WHITE)
-        ly += 30
-    blines = wrap(d, body, F_BODY, tw)[:3]
-    for ln in blines:
-        d.text((tx, ly + 4), ln, font=F_BODY, fill=MUTED)
-        ly += 24
+    tw = w - 16 - 108
+    draw.text((tx, y + 14), kicker, font=F_KICK, fill=accent)
+    ly = y + 40
+    for line in fit_lines(draw, headline, F_HEAD, tw, 2):
+        draw.text((tx, ly), line, font=F_HEAD, fill=PAPER)
+        ly += 29
+    ly += 2
+    for line in fit_lines(draw, body, F_BODY, tw, 3):
+        draw.text((tx, ly), line, font=F_BODY, fill=SOFT)
+        ly += 23
+
+
+def build():
+    img = Image.new("RGB", (CANVAS_W, CANVAS_H), INK)
+    d = ImageDraw.Draw(img)
+
+    # Masthead
+    d.text((CANVAS_W // 2, 30), "SATURDAY 21 NOVEMBER 2026",
+           font=F_DATE, fill=PAPER, anchor="mt")
+    d.text((CANVAS_W // 2, 102), "THE WORLD IN ONE PICTURE",
+           font=F_TAG, fill=GOLD, anchor="mt")
+    d.line([(28, 146), (CANVAS_W - 28, 146)], fill=GOLD, width=3)
+
+    # Lead story: Russia's strike on Ukraine, spilling into Poland
+    lx, ly, lw, lh = 28, 162, CANVAS_W - 56, 210
+    d.rounded_rectangle([lx, ly, lx + lw, ly + lh], radius=10, fill=CARD_HI)
+    d.rectangle([lx, ly + 8, lx + 10, ly + lh - 8], fill=RED)
+    icon_burst(d, lx + lw - 108, ly + 56, 104, RED)
+    d.text((lx + 26, ly + 14), "WAR  |  UKRAINE AND POLAND",
+           font=F_KICK, fill=(255, 122, 122))
+    hy = ly + 40
+    for line in fit_lines(d, "RUSSIA'S BIGGEST STRIKE YET HITS UKRAINE - AND POLAND",
+                          F_LEAD, lw - 240, 2):
+        d.text((lx + 26, hy), line, font=F_LEAD, fill=PAPER)
+        hy += 41
+    by = hy + 4
+    lead_body = ("400+ drones and 110 missiles rain down: 8 killed, Kyiv's "
+                 "bridges hit, power cut nationwide. Two missiles and a "
+                 "drone land in Poland; Tusk calls it a deliberate "
+                 "provocation. Kryvyi Rih double-tap kills 2, wounds 60.")
+    for line in fit_lines(d, lead_body, F_BODY, lw - 160, 3):
+        d.text((lx + 26, by), line, font=F_BODY, fill=SOFT)
+        by += 23
+
+    # 2 x 2 grid
+    gx, gy = 28, 388
+    cw, ch, gap = 472, 186, 12
+    card(d, gx, gy, cw, ch, "ECONOMY  |  GLOBAL", RED,
+         "MARKETS PLUNGE INTO CORRECTION",
+         "S&P 500 -3.7% into correction; Nasdaq -5.3%, Nikkei -5.1%. "
+         "Nvidia -14% amid a leadership crisis.", icon_chart)
+    card(d, gx + cw + gap, gy, cw, ch, "DISASTER  |  ASIA", AMBER,
+         "6.8 QUAKE STRIKES OFF TIMOR-LESTE",
+         "Banda Sea tremor at 09:42 UTC, 226 km NE of Dili. Felt in Dili "
+         "and Darwin; no damage reported.", icon_quake)
+    card(d, gx, gy + ch + gap, cw, ch, "DIPLOMACY  |  GENEVA", SKY,
+         "128 NATIONS OPEN PATH ON 'KILLER ROBOTS'",
+         "UN talks agree to draft rules on autonomous weapons over two "
+         "years - but no binding commitment.", icon_robot)
+    card(d, gx + cw + gap, gy + ch + gap, cw, ch, "CRIME  |  MEXICO", GOLD,
+         "MEXICO CAPTURES FBI MOST-WANTED BOSS",
+         "'El Chapo Isidro' seized in a Sinaloa raid with US help. $5m "
+         "FBI reward; 11 killed in the fighting.", icon_shield)
+
+    # Bottom strip: BepiColombo at Mercury
+    sx, sy, sw, sh = 28, 786, CANVAS_W - 56, 170
+    d.rounded_rectangle([sx, sy, sx + sw, sy + sh], radius=10, fill=CARD_HI)
+    d.rounded_rectangle([sx, sy, sx + sw, sy + 6], radius=3, fill=VIOLET)
+    icon_planet(d, sx + 26, sy + 28, 114, VIOLET)
+    tx = sx + 164
+    d.text((tx, sy + 16), "SPACE  |  MERCURY", font=F_KICK,
+           fill=(201, 146, 228))
+    d.text((tx, sy + 42), "BEPICOLOMBO REACHES MERCURY",
+           font=F_LEAD, fill=PAPER)
+    by = sy + 90
+    for line in fit_lines(d, "ESA and JAXA orbiters enter orbit around the "
+                             "innermost planet - after 8 years and 10 "
+                             "billion km. Science begins in April 2027.",
+                          F_BODY, sw - 190, 2):
+        d.text((tx, by), line, font=F_BODY, fill=SOFT)
+        by += 23
+
+    # Footer
+    d.line([(28, 970), (CANVAS_W - 28, 970)], fill=RULE, width=2)
+    d.text((CANVAS_W // 2, 980),
+           "Sources: Reuters, AP, BBC, The Guardian, ESA, USGS  -  "
+           "All stories reported on 21 November 2026",
+           font=F_FOOT, fill=SOFT, anchor="mt")
+    return img
 
 
 def main():
-    img = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(img)
-
-    # ---- Masthead ----
-    d.text((W // 2, 34), "SATURDAY 21 NOVEMBER 2026", font=F_DATE,
-           fill=WHITE, anchor="mt")
-    d.text((W // 2, 104), "THE WORLD IN ONE PICTURE", font=F_SUB,
-           fill=GOLD, anchor="mt")
-    d.line([(28, 148), (W - 28, 148)], fill=GOLD, width=3)
-
-    # ---- Lead story: Russia strike ----
-    lx, ly, lw, lh = 28, 166, W - 56, 196
-    d.rounded_rectangle([lx, ly, lx + lw, ly + lh], radius=10, fill=PANEL2)
-    d.rectangle([lx, ly + 8, lx + 10, ly + lh - 8], fill=RED)
-    draw_burst(d, lx + lw - 84, ly + 62, 52, RED)
-    d.text((lx + 26, ly + 14), "WAR  |  UKRAINE AND POLAND", font=F_KICK,
-           fill=(255, 120, 120))
-    head = wrap(d, "RUSSIA'S BIGGEST STRIKE HITS UKRAINE - AND POLAND",
-                F_LEAD, lw - 220)
-    hy = ly + 42
-    for ln in head[:2]:
-        d.text((lx + 26, hy), ln, font=F_LEAD, fill=WHITE)
-        hy += 42
-    body = wrap(d, "400+ drones and 110 missiles rain on Kyiv: 8 killed, "
-                   "power cut in 10 regions. Two missiles and a drone land "
-                   "in Poland; NATO calls it a grave violation.",
-                F_BODY, lw - 52)
-    by = hy + 6
-    for ln in body[:2]:
-        d.text((lx + 26, by), ln, font=F_BODY, fill=MUTED)
-        by += 27
-
-    # ---- 2x2 grid ----
-    gx, gy = 28, 380
-    cw, chh, gap = 472, 184, 12
-    story_cell(d, gx, gy, cw, chh, "ECONOMY  |  GLOBAL", RED,
-               "MARKETS PLUNGE INTO CORRECTION",
-               "AI sell-off: S&P 500 -3.7%, Nikkei -5.1%. Nvidia -14% as "
-               "the SEC probes its accounting.", draw_chart)
-    story_cell(d, gx + cw + gap, gy, cw, chh, "DISASTER  |  ASIA", ORANGE,
-               "6.8 QUAKE STRIKES OFF TIMOR-LESTE",
-               "Tremor strikes 103 km off Lospalos at 09:42 UTC. No "
-               "tsunami threat.", draw_quake)
-    story_cell(d, gx, gy + chh + gap, cw, chh, "DIPLOMACY  |  GENEVA",
-               STEEL, "128 NATIONS AGREE 'KILLER ROBOT' RULES",
-               "UN talks to draft rules on autonomous weapons, aiming for "
-               "an accord by 2028.", draw_robot)
-    story_cell(d, gx + cw + gap, gy + chh + gap, cw, chh,
-               "CRIME  |  MEXICO", GOLD,
-               "MEXICO CAPTURES FBI MOST-WANTED BOSS",
-               "'El Chapo Isidro' seized in a Sinaloa raid, announced "
-               "Saturday. $5m FBI bounty.", draw_badge)
-
-    # ---- Bottom strip: BepiColombo ----
-    sx, sy, sw, sh = 28, 780, W - 56, 176
-    d.rounded_rectangle([sx, sy, sx + sw, sy + sh], radius=10, fill=PANEL2)
-    d.rounded_rectangle([sx, sy, sx + sw, sy + 6], radius=3, fill=PURPLE)
-    draw_planet(d, sx + 24, sy + 30, 116, 116, PURPLE)
-    tx = sx + 164
-    d.text((tx, sy + 16), "SPACE  |  MERCURY", font=F_KICK, fill=(198, 142, 226))
-    d.text((tx, sy + 44), "BEPICOLOMBO REACHES MERCURY", font=F_LEAD,
-           fill=WHITE)
-    blines = wrap(d, "ESA and JAXA orbiters enter orbit around the innermost "
-                      "planet today - after 8 years and 10 billion km.",
-                  F_BODY, sw - 190)
-    by = sy + 92
-    for ln in blines[:2]:
-        d.text((tx, by), ln, font=F_BODY, fill=MUTED)
-        by += 27
-
-    # ---- Footer ----
-    d.line([(28, 972), (W - 28, 972)], fill=(60, 76, 96), width=2)
-    d.text((W // 2, 982), "Sources: Reuters, AP, BBC, The Guardian, ESA, "
-           "USGS  -  All stories reported on 21 November 2026",
-           font=F_FOOT, fill=MUTED, anchor="mt")
-
-    out = os.environ.get("MAKEFUN_OUTPUT_DIR", "out")
-    os.makedirs(out, exist_ok=True)
-    img.save(os.path.join(out, "entry.png"))
-    print("wrote", os.path.join(out, "entry.png"),
-          img.size, os.path.getsize(os.path.join(out, "entry.png")))
+    img = build()
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "out")
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, "entry.png")
+    img.save(path)
+    print("wrote", path, img.size, os.path.getsize(path))
 
 
 if __name__ == "__main__":
